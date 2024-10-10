@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Linx",
+    "name": "My Linx App",
     "slug": "Linx",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -19,7 +19,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.stefanoracca.Linx"
     },
     "web": {
       "bundler": "metro",
@@ -31,6 +32,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a365766e-f724-4bcf-8b0c-9775b4a1df04"
+      }
     }
   }
 }
