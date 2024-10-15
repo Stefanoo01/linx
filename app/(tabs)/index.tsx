@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Linking,
+  Dimensions,
 } from "react-native";
 import Icon from "react-native-vector-icons/FontAwesome5";
 import Collapsible from "react-native-collapsible";
@@ -15,11 +16,13 @@ import { useFocusEffect, useRouter } from "expo-router";
 export default function Component() {
   const [activeSections, setActiveSections] = useState<string[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+  const [backupCategories, setBackupCategories] = useState<any[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [dimensions, setDimensions] = useState(Dimensions.get("window")); // Imposta lo stato per le dimensioni
 
   useFocusEffect(
     React.useCallback(() => {
-      loadCategories(); // Ricarica le categorie quando la pagina viene visualizzata
+      loadCategories();
     }, [])
   );
 
@@ -58,10 +61,9 @@ export default function Component() {
   const removeItem = (id: string) => {
     const recursiveRemove = (items: any[]): any[] => {
       return items
-        .filter((item) => item.id !== id) // Rimuovi l'elemento a questo livello
+        .filter((item) => item.id !== id)
         .map((item) => {
           if (item.items) {
-            // Se l'elemento ha sottocartelle o link, applica la ricorsione
             return { ...item, items: recursiveRemove(item.items) };
           }
           return item;
@@ -73,13 +75,19 @@ export default function Component() {
     updateDatabase(updatedCategories);
   };
 
+  const enterEditMode = () => {
+    setBackupCategories(categories);
+    setIsEditing(true);
+  };
+
   const confirmChanges = () => {
     updateDatabase(categories);
-    setIsEditing(false); // Esci dalla modalità modifica
+    setIsEditing(false);
   };
 
   const cancelChanges = () => {
-    loadCategories(); // Ricarica le categorie senza salvare le modifiche
+    setCategories(backupCategories);
+    updateDatabase(backupCategories);
     setIsEditing(false);
   };
 
@@ -100,8 +108,13 @@ export default function Component() {
               onPress={() => !isEditing && Linking.openURL(item.url)}
             >
               <View style={{ flex: 1 }}>
-                <Text style={styles.linkTitle}>{item.name}</Text>
-                <Text style={styles.linkURL}>{item.url}</Text>
+                <Text
+                  style={styles.linkTitle}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {item.name}
+                </Text>
               </View>
               <Icon name="external-link-alt" size={16} color="#A78BFA" />
             </TouchableOpacity>
@@ -118,6 +131,7 @@ export default function Component() {
           </View>
         );
       } else {
+        const hasChildren = item.items && item.items.length > 0;
         const isActive = activeSections.includes(item.id);
         return (
           <View key={index} style={{ marginLeft: depth * 10 }}>
@@ -134,13 +148,21 @@ export default function Component() {
                   }}
                 >
                   <Icon name="folder" size={20} color="#A78BFA" />
-                  <Text style={styles.folderTitle}>{item.name}</Text>
+                  <Text
+                    style={styles.folderTitle}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.name}
+                  </Text>
                 </View>
-                <Icon
-                  name={isActive ? "chevron-down" : "chevron-right"}
-                  size={16}
-                  color="#A78BFA"
-                />
+                {hasChildren && (
+                  <Icon
+                    name={isActive ? "chevron-down" : "chevron-right"}
+                    size={16}
+                    color="#A78BFA"
+                  />
+                )}
               </TouchableOpacity>
               {isEditing && (
                 <TouchableOpacity onPress={() => removeItem(item.id)}>
@@ -164,8 +186,23 @@ export default function Component() {
     });
   };
 
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setDimensions(window);
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
+
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { width: dimensions.width, height: dimensions.height },
+      ]}
+    >
       <View style={styles.header}>
         <Text style={styles.headerText}>Linx</Text>
         <View style={{ flexDirection: "row" }}>
@@ -186,10 +223,7 @@ export default function Component() {
               >
                 <Icon name="plus" size={24} color="#A78BFA" />
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setIsEditing(true)}
-                style={styles.button}
-              >
+              <TouchableOpacity onPress={enterEditMode} style={styles.button}>
                 <Icon name="edit" size={24} color="#A78BFA" />
               </TouchableOpacity>
             </>
@@ -197,8 +231,20 @@ export default function Component() {
         </View>
       </View>
 
-      <View style={styles.card}>
-        <ScrollView style={styles.scrollArea}>
+      <View
+        style={[
+          styles.card,
+          { width: dimensions.width * 0.9, height: dimensions.height * 0.8 },
+        ]}
+      >
+        <ScrollView
+          style={[
+            styles.scrollArea,
+            { marginBottom: dimensions.width > dimensions.height ? 65 : -30 },
+          ]}
+          contentContainerStyle={{ flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
+        >
           {renderItems(categories)}
         </ScrollView>
       </View>
@@ -229,8 +275,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#27272A",
     borderRadius: 10,
-    width: 320,
-    height: 640,
     padding: 0,
   },
   scrollArea: {
@@ -278,5 +322,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginLeft: 10,
+  },
+  footer: {
+    height: 50,
+    backgroundColor: "#27272A",
   },
 });

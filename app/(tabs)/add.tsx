@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,9 +9,10 @@ import {
   ScrollView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Icon from "react-native-vector-icons/FontAwesome5";
-import Collapsible from "react-native-collapsible"; // Per gestire l'espansione
+import Collapsible from "react-native-collapsible";
+import { Dimensions } from "react-native";
 
 export default function Add() {
   const router = useRouter();
@@ -20,10 +21,24 @@ export default function Add() {
   const [url, setUrl] = useState("");
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [expandedFolders, setExpandedFolders] = useState<string[]>([]); // Cartelle espanse
+  const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
+  const [message, setMessage] = useState<string | null>(null); // Stato per il messaggio temporaneo
+  const [dimensions, setDimensions] = useState(Dimensions.get("window"));
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadFolders();
+    }, [])
+  );
 
   useEffect(() => {
-    loadFolders(); // Carica le cartelle esistenti
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
+      setDimensions(window);
+    });
+
+    return () => {
+      subscription?.remove();
+    };
   }, []);
 
   const loadFolders = async () => {
@@ -31,7 +46,7 @@ export default function Add() {
       const storedCategories = await AsyncStorage.getItem("categories");
       if (storedCategories) {
         const categories = JSON.parse(storedCategories);
-        const onlyFolders = categories.filter((item: any) => item.items); // Filtra solo le cartelle
+        const onlyFolders = categories.filter((item: any) => item.items);
         setFolders(onlyFolders);
       }
     } catch (error) {
@@ -43,21 +58,21 @@ export default function Add() {
     if (expandedFolders.includes(folderId)) {
       setExpandedFolders(expandedFolders.filter((id) => id !== folderId));
     } else {
-      setExpandedFolders([...expandedFolders, folderId]); // Espandi cartella
+      setExpandedFolders([...expandedFolders, folderId]);
     }
   };
 
   const findFolderById = (categories: any[], folderId: string): any | null => {
     for (let folder of categories) {
       if (folder.id === folderId) {
-        return folder; // Se la cartella corrisponde, ritorna la cartella
+        return folder;
       }
       if (folder.items && folder.items.length > 0) {
-        const found = findFolderById(folder.items, folderId); // Cerca ricorsivamente nelle sotto-cartelle
+        const found = findFolderById(folder.items, folderId);
         if (found) return found;
       }
     }
-    return null; // Se non viene trovata, ritorna null
+    return null;
   };
 
   const addItem = async () => {
@@ -66,35 +81,37 @@ export default function Add() {
       const categories = storedCategories ? JSON.parse(storedCategories) : [];
 
       if (type === "folder" && selectedFolder) {
-        // Cerca la cartella selezionata ricorsivamente
         const selectedFolderObj = findFolderById(categories, selectedFolder);
         if (selectedFolderObj && selectedFolderObj.items) {
-          // Aggiungi la nuova cartella all'interno di quella selezionata
           selectedFolderObj.items.push({
             id: Date.now().toString(),
             name,
             items: [],
+            position: selectedFolderObj.items.length, // Imposta la posizione come l'ultima
           });
-          Alert.alert("Folder added inside another folder!");
+          setMessage("Folder added inside another folder!");
         } else {
           Alert.alert("Folder not found or doesn't support subfolders.");
           return;
         }
       } else if (type === "folder" && !selectedFolder) {
-        // Aggiungi una nuova cartella nella root
-        categories.push({ id: Date.now().toString(), name, items: [] });
-        Alert.alert("Folder added!");
+        categories.push({
+          id: Date.now().toString(),
+          name,
+          items: [],
+          position: categories.length, // Imposta la posizione come l'ultima
+        });
+        setMessage("Folder added!");
       } else if (type === "link" && selectedFolder) {
-        // Cerca la cartella selezionata ricorsivamente
         const selectedFolderObj = findFolderById(categories, selectedFolder);
         if (selectedFolderObj && selectedFolderObj.items) {
-          // Aggiungi il nuovo link all'interno della cartella selezionata
           selectedFolderObj.items.push({
             id: Date.now().toString(),
             name,
             url,
+            position: selectedFolderObj.items.length, // Imposta la posizione come l'ultima
           });
-          Alert.alert("Link added to folder!");
+          setMessage("Link added to folder!");
         } else {
           Alert.alert("Folder not found or doesn't support links.");
           return;
@@ -106,13 +123,14 @@ export default function Add() {
 
       await AsyncStorage.setItem("categories", JSON.stringify(categories));
 
-      // Reset degli input e ricarica delle cartelle aggiornate
       setName("");
       setUrl("");
       setType(null);
       setSelectedFolder(null);
+      loadFolders();
 
-      loadFolders(); // Ricarica le cartelle per aggiornare la lista
+      // Mostra il messaggio per 3 secondi
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error("Error saving data", error);
     }
@@ -126,47 +144,54 @@ export default function Add() {
   };
 
   const renderFolders = (folders: any[], depth = 0) => {
-    return folders.map((folder) => {
-      const isExpanded = expandedFolders.includes(folder.id);
-      const hasSubfolders = folder.items && folder.items.length > 0;
+    return folders
+      .filter((item: any) => item.items)
+      .map((folder) => {
+        const isExpanded = expandedFolders.includes(folder.id);
+        const hasSubfolders =
+          folder.items && folder.items.some((item: any) => item.items);
 
-      return (
-        <View key={folder.id} style={{ marginLeft: depth * 10 }}>
-          <TouchableOpacity
-            style={[
-              styles.folderItem,
-              selectedFolder === folder.id && styles.selectedFolderItem,
-            ]}
-            onPress={() => {
-              setSelectedFolder(folder.id); // Prima seleziona la cartella
-              if (hasSubfolders) {
-                toggleExpand(folder.id); // Poi la espande se ha sotto-cartelle
-              }
-            }}
-          >
-            <Icon name="folder" size={20} color="#A78BFA" />
-            <Text style={styles.folderName}>{folder.name}</Text>
-            {hasSubfolders && (
-              <Icon
-                name={isExpanded ? "chevron-down" : "chevron-right"}
-                size={16}
-                color="#A78BFA"
-                style={{ marginLeft: "auto" }} // Posiziona la freccia a destra
-              />
-            )}
-          </TouchableOpacity>
+        return (
+          <View key={folder.id} style={{ marginLeft: depth * 10 }}>
+            <TouchableOpacity
+              style={[
+                styles.folderItem,
+                selectedFolder === folder.id && styles.selectedFolderItem,
+              ]}
+              onPress={() => {
+                setSelectedFolder(folder.id);
+                if (hasSubfolders) {
+                  toggleExpand(folder.id);
+                }
+              }}
+            >
+              <Icon name="folder" size={20} color="#A78BFA" />
+              <Text style={styles.folderName}>{folder.name}</Text>
+              {hasSubfolders && (
+                <Icon
+                  name={isExpanded ? "chevron-down" : "chevron-right"}
+                  size={16}
+                  color="#A78BFA"
+                  style={{ marginLeft: "auto" }}
+                />
+              )}
+            </TouchableOpacity>
 
-          {/* Se la cartella è espansa, renderizza le sotto-cartelle */}
-          <Collapsible collapsed={!isExpanded}>
-            {hasSubfolders && renderFolders(folder.items, depth + 1)}
-          </Collapsible>
-        </View>
-      );
-    });
+            <Collapsible collapsed={!isExpanded}>
+              {hasSubfolders && renderFolders(folder.items, depth + 1)}
+            </Collapsible>
+          </View>
+        );
+      });
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { width: dimensions.width, height: dimensions.height },
+      ]}
+    >
       <Text style={styles.headerText}>Add Category/Link</Text>
 
       {!type ? (
@@ -227,6 +252,13 @@ export default function Add() {
               <Text style={styles.buttonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      )}
+
+      {/* Mostra il messaggio temporaneo se presente */}
+      {message && (
+        <View style={styles.toastContainer}>
+          <Text style={styles.toastMessage}>{message}</Text>
         </View>
       )}
     </View>
@@ -326,5 +358,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
+  },
+  toastContainer: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: "#A78BFA",
+    padding: 15,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  toastMessage: {
+    color: "#FFFFFF",
+    fontSize: 16,
   },
 });
