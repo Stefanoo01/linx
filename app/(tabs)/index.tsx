@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import Icon from "react-native-vector-icons/FontAwesome5";
 import Collapsible from "react-native-collapsible";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
 
 export default function Component() {
   const [activeSections, setActiveSections] = useState<string[]>([]);
@@ -19,6 +20,9 @@ export default function Component() {
   const [backupCategories, setBackupCategories] = useState<any[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [dimensions, setDimensions] = useState(Dimensions.get("window")); // Imposta lo stato per le dimensioni
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [, forceUpdate] = useState({});
 
   useFocusEffect(
     React.useCallback(() => {
@@ -45,6 +49,8 @@ export default function Component() {
     } else {
       setActiveSections([...activeSections, id]);
     }
+    // Forza un re-render
+    forceUpdate({});
   };
 
   const updateDatabase = async (updatedCategories: any[]) => {
@@ -91,6 +97,16 @@ export default function Component() {
     setIsEditing(false);
   };
 
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
   const renderItems = (items: any[], depth = 0) => {
     return items.map((item, index) => {
       if (item.url) {
@@ -106,6 +122,10 @@ export default function Component() {
             <TouchableOpacity
               style={[styles.linkCard, { flex: 1 }]}
               onPress={() => !isEditing && Linking.openURL(item.url)}
+              onLongPress={() => {
+                Clipboard.setStringAsync(item.url);
+                showToast("Link copied to clipboard");
+              }}
             >
               <View style={{ flex: 1 }}>
                 <Text
@@ -248,6 +268,12 @@ export default function Component() {
           {renderItems(categories)}
         </ScrollView>
       </View>
+
+      {toastMessage && (
+        <View style={styles.toastContainer}>
+          <Text style={styles.toastMessage}>{toastMessage}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -326,5 +352,19 @@ const styles = StyleSheet.create({
   footer: {
     height: 50,
     backgroundColor: "#27272A",
+  },
+  toastContainer: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: "#A78BFA",
+    padding: 15,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  toastMessage: {
+    color: "#FFFFFF",
+    fontSize: 16,
   },
 });
